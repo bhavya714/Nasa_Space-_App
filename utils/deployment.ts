@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { getEmbeddedData } from '@/data/embeddedData';
 
 // Deployment platform detection
 export function getDeploymentPlatform(): string {
@@ -25,15 +26,20 @@ export function isDataAccessible(): boolean {
 }
 
 // Get data source strategy
-export function getDataSource(): 'filesystem' | 'fallback' {
+export function getDataSource(): 'filesystem' | 'fallback' | 'embedded' {
   const configuredSource = process.env.DATA_SOURCE;
   
   if (configuredSource === 'fallback') {
     return 'fallback';
   }
   
+  if (configuredSource === 'embedded') {
+    return 'embedded';
+  }
+  
   // Auto-detect based on file availability
-  return isDataAccessible() ? 'filesystem' : 'fallback';
+  // Priority: filesystem -> embedded -> fallback
+  return isDataAccessible() ? 'filesystem' : 'embedded';
 }
 
 // Safe file system operations with fallback
@@ -181,3 +187,101 @@ export const fallbackStats = {
     { topic: 'Radiation Biology', articles: 1, growth: 8 }
   ]
 };
+
+// Function to get embedded research articles data
+export function getEmbeddedArticlesData() {
+  const embeddedData = getEmbeddedData();
+  const articles = [];
+  
+  // Parse embedded CSV data
+  const lines = embeddedData.csvData.trim().split('\n');
+  const headers = lines[0].split(',');
+  
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',');
+    const record: any = {};
+    
+    headers.forEach((header, index) => {
+      record[header.trim()] = values[index]?.trim().replace(/"/g, '');
+    });
+    
+    // Get article content from embedded texts
+    const fileName = record.saved_file_path?.split('/')[1];
+    const content = embeddedData.articleTexts[fileName] || 'Article content not available';
+    
+    articles.push({
+      id: parseInt(record.article_id),
+      title: record.title || `Research Article ${record.article_id}`,
+      url: record.url,
+      content: content,
+      wordCount: parseInt(record.word_count) || 2500,
+      contentType: record.content_type as 'HTML' | 'PDF' || 'HTML',
+      abstract: extractAbstractFromContent(content),
+      keywords: extractKeywordsFromContent(content),
+      categories: categorizeFromContent(content),
+      pmcId: extractPMCFromURL(record.url)
+    });
+  }
+  
+  return articles;
+}
+
+// Helper functions for embedded data processing
+function extractAbstractFromContent(content: string): string {
+  const abstractMatch = content.match(/Abstract\s*([\s\S]*?)\s*Introduction/i);
+  if (abstractMatch) {
+    return abstractMatch[1].trim().slice(0, 300) + '...';
+  }
+  
+  // Fallback to first paragraph
+  const firstParagraph = content.split('\n\n')[1];
+  return firstParagraph ? firstParagraph.slice(0, 300) + '...' : 'Abstract not available';
+}
+
+function extractKeywordsFromContent(content: string): string[] {
+  const keywordsMatch = content.match(/Keywords:\s*(.+)$/im);
+  if (keywordsMatch) {
+    return keywordsMatch[1].split(',').map(k => k.trim()).slice(0, 8);
+  }
+  
+  // Fallback to common space biology keywords
+  const bioKeywords = [
+    'microgravity', 'space', 'biology', 'cellular', 'adaptation',
+    'spaceflight', 'radiation', 'physiology', 'research'
+  ];
+  
+  const lowerContent = content.toLowerCase();
+  const foundKeywords = bioKeywords.filter(keyword => 
+    lowerContent.includes(keyword.toLowerCase())
+  );
+  
+  return foundKeywords.slice(0, 6);
+}
+
+function categorizeFromContent(content: string): string[] {
+  const lowerContent = content.toLowerCase();
+  const categories = [];
+  
+  const categoryMap = {
+    'Space Biology': ['space', 'microgravity', 'spaceflight'],
+    'Human Physiology': ['human', 'physiological', 'cardiovascular'],
+    'Cell Biology': ['cell', 'cellular', 'molecular'],
+    'Neuroscience': ['neural', 'brain', 'nervous'],
+    'Radiation Biology': ['radiation', 'cosmic', 'dna damage'],
+    'Plant Biology': ['plant', 'botany', 'growth']
+  };
+  
+  Object.entries(categoryMap).forEach(([category, keywords]) => {
+    const matches = keywords.filter(keyword => lowerContent.includes(keyword));
+    if (matches.length > 0) {
+      categories.push(category);
+    }
+  });
+  
+  return categories.length > 0 ? categories : ['General Biology'];
+}
+
+function extractPMCFromURL(url: string): string | undefined {
+  const pmcMatch = url.match(/PMC(\d+)/);
+  return pmcMatch ? pmcMatch[1] : undefined;
+}

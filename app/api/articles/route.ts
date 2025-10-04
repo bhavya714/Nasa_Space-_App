@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getDataSource, logDeploymentInfo, safeReadFile, fallbackArticles, fallbackStats } from '@/utils/deployment';
+import { getDataSource, logDeploymentInfo, safeReadFile, fallbackArticles, fallbackStats, getEmbeddedArticlesData } from '@/utils/deployment';
 
 // Simple CSV parser for now (without external dependency)
 function parseCSV(csvContent: string) {
@@ -56,16 +56,25 @@ async function loadArticles(): Promise<Article[]> {
     lastLoadTime = Date.now();
     return fallbackArticles;
   }
+  
+  if (dataSource === 'embedded') {
+    console.log('Using embedded data - more reliable than filesystem');
+    const embeddedArticles = getEmbeddedArticlesData();
+    articlesCache = embeddedArticles;
+    lastLoadTime = Date.now();
+    return embeddedArticles;
+  }
 
   try {
     const summaryPath = path.join(process.cwd(), 'SB_publications-main', 'scraped_summary.csv');
     
     const csvContent = safeReadFile(summaryPath);
     if (!csvContent) {
-      console.warn('Summary CSV not found, falling back to sample data');
-      articlesCache = fallbackArticles;
+      console.warn('Summary CSV not found, falling back to embedded data');
+      const embeddedArticles = getEmbeddedArticlesData();
+      articlesCache = embeddedArticles;
       lastLoadTime = Date.now();
-      return fallbackArticles;
+      return embeddedArticles;
     }
 
     const records = parseCSV(csvContent);
@@ -91,10 +100,11 @@ async function loadArticles(): Promise<Article[]> {
     console.log(`Loaded ${articles.length} articles successfully`);
     return articles;
   } catch (error) {
-    console.error('Error loading articles, falling back to sample data:', error);
-    articlesCache = fallbackArticles;
+    console.error('Error loading articles, falling back to embedded data:', error);
+    const embeddedArticles = getEmbeddedArticlesData();
+    articlesCache = embeddedArticles;
     lastLoadTime = Date.now();
-    return fallbackArticles;
+    return embeddedArticles;
   }
 }
 

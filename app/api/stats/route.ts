@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getDataSource, logDeploymentInfo, safeReadFile, fallbackStats } from '@/utils/deployment';
+import { getDataSource, logDeploymentInfo, safeReadFile, fallbackStats, getEmbeddedArticlesData } from '@/utils/deployment';
 
 interface ArticleStats {
   totalArticles: number;
@@ -52,6 +52,14 @@ async function generateStats(): Promise<ArticleStats> {
     statsCache = fallbackStats;
     lastStatsLoad = Date.now();
     return fallbackStats;
+  }
+  
+  if (dataSource === 'embedded') {
+    console.log('Using embedded data for stats generation');
+    const embeddedStats = generateStatsFromEmbeddedData();
+    statsCache = embeddedStats;
+    lastStatsLoad = Date.now();
+    return embeddedStats;
   }
 
   try {
@@ -226,7 +234,55 @@ function generateDailyActivity() {
     });
   }
   
-  return days;
+  return trends;
+}
+
+// Generate stats from embedded data
+function generateStatsFromEmbeddedData(): ArticleStats {
+  const embeddedArticles = getEmbeddedArticlesData();
+  
+  // Initialize counters
+  const contentTypes: { [key: string]: number } = {};
+  const keywordCounts: { [key: string]: number } = {};
+  const categoriesCount: { [key: string]: number } = {};
+  let totalWords = 0;
+
+  // Process embedded articles
+  embeddedArticles.forEach(article => {
+    totalWords += article.wordCount;
+    
+    // Content types
+    const contentType = article.contentType || 'HTML';
+    contentTypes[contentType] = (contentTypes[contentType] || 0) + 1;
+    
+    // Count keywords
+    article.keywords.forEach(keyword => {
+      keywordCounts[keyword] = (keywordCounts[keyword] || 0) + 1;
+    });
+    
+    // Count categories
+    article.categories.forEach(category => {
+      categoriesCount[category] = (categoriesCount[category] || 0) + 1;
+    });
+  });
+  
+  // Get top keywords
+  const topKeywords = Object.entries(keywordCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 20)
+    .map(([keyword, count]) => ({ keyword, count }));
+    
+  return {
+    totalArticles: embeddedArticles.length,
+    totalWords,
+    averageWords: embeddedArticles.length > 0 ? Math.round(totalWords / embeddedArticles.length) : 0,
+    contentTypes,
+    topKeywords,
+    categoriesCount,
+    monthlyPublications: generateMonthlyData(),
+    dailyActivity: generateDailyActivity(),
+    researchTrends: generateResearchTrends(topKeywords)
+  };
 }
 
 function generateResearchTrends(topKeywords: { keyword: string; count: number }[]) {
