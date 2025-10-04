@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDataSource, logDeploymentInfo, safeReadFile, fallbackArticles, fallbackStats, getEmbeddedArticlesData } from '@/utils/deployment';
+import { loadAllArticlesRobustly, verifyDataAvailability } from '@/utils/dataLoader';
 
 // Simple CSV parser for now (without external dependency)
 function parseCSV(csvContent: string) {
@@ -45,66 +46,22 @@ async function loadArticles(): Promise<Article[]> {
     return articlesCache;
   }
 
-  // Log deployment info for debugging
-  logDeploymentInfo();
+  console.log('🚀 Loading NASA research articles with robust data loader...');
   
-  const dataSource = getDataSource();
-  
-  if (dataSource === 'fallback') {
-    console.log('Using fallback data - filesystem not accessible');
+  // Use the comprehensive data loader that handles all 562 articles
+  try {
+    const articles = loadAllArticlesRobustly();
+    console.log(`✅ Successfully loaded ${articles.length} research articles`);
+    
+    articlesCache = articles;
+    lastLoadTime = Date.now();
+    return articles;
+    
+  } catch (error) {
+    console.error('❌ Robust data loader failed, using basic fallback:', error);
     articlesCache = fallbackArticles;
     lastLoadTime = Date.now();
     return fallbackArticles;
-  }
-  
-  if (dataSource === 'embedded') {
-    console.log('Using embedded data - more reliable than filesystem');
-    const embeddedArticles = getEmbeddedArticlesData();
-    articlesCache = embeddedArticles;
-    lastLoadTime = Date.now();
-    return embeddedArticles;
-  }
-
-  try {
-    const summaryPath = path.join(process.cwd(), 'SB_publications-main', 'scraped_summary.csv');
-    
-    const csvContent = safeReadFile(summaryPath);
-    if (!csvContent) {
-      console.warn('Summary CSV not found, falling back to embedded data');
-      const embeddedArticles = getEmbeddedArticlesData();
-      articlesCache = embeddedArticles;
-      lastLoadTime = Date.now();
-      return embeddedArticles;
-    }
-
-    const records = parseCSV(csvContent);
-
-    const articles: Article[] = [];
-
-    for (const record of records) { // Use all articles for comprehensive data
-      try {
-        const filePath = path.join(process.cwd(), 'SB_publications-main', record.saved_file_path);
-        
-        const content = safeReadFile(filePath);
-        if (content) {
-          const processedArticle = processArticleContent(content, record);
-          articles.push(processedArticle);
-        }
-      } catch (error) {
-        console.error(`Error processing article ${record.article_id}:`, error);
-      }
-    }
-
-    articlesCache = articles;
-    lastLoadTime = Date.now();
-    console.log(`Loaded ${articles.length} articles successfully`);
-    return articles;
-  } catch (error) {
-    console.error('Error loading articles, falling back to embedded data:', error);
-    const embeddedArticles = getEmbeddedArticlesData();
-    articlesCache = embeddedArticles;
-    lastLoadTime = Date.now();
-    return embeddedArticles;
   }
 }
 
