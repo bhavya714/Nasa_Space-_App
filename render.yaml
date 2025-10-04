@@ -9,6 +9,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
       - key: NEXT_PUBLIC_APP_URL
         fromService:
           type: web
@@ -24,7 +28,7 @@ services:
         value: true
       - key: CACHE_DURATION
         value: 600000
-    healthCheckPath: /api/stats
+    healthCheckPath: /
     disk:
       name: data-disk
       mountPath: /opt/render/project/src
