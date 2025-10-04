@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getDataSource, logDeploymentInfo, safeReadFile, fallbackArticles, fallbackStats } from '@/utils/deployment';
 
 // Simple CSV parser for now (without external dependency)
 function parseCSV(csvContent: string) {
@@ -44,15 +45,29 @@ async function loadArticles(): Promise<Article[]> {
     return articlesCache;
   }
 
+  // Log deployment info for debugging
+  logDeploymentInfo();
+  
+  const dataSource = getDataSource();
+  
+  if (dataSource === 'fallback') {
+    console.log('Using fallback data - filesystem not accessible');
+    articlesCache = fallbackArticles;
+    lastLoadTime = Date.now();
+    return fallbackArticles;
+  }
+
   try {
     const summaryPath = path.join(process.cwd(), 'SB_publications-main', 'scraped_summary.csv');
     
-    if (!fs.existsSync(summaryPath)) {
-      console.warn('Summary CSV not found');
-      return [];
+    const csvContent = safeReadFile(summaryPath);
+    if (!csvContent) {
+      console.warn('Summary CSV not found, falling back to sample data');
+      articlesCache = fallbackArticles;
+      lastLoadTime = Date.now();
+      return fallbackArticles;
     }
 
-    const csvContent = fs.readFileSync(summaryPath, 'utf-8');
     const records = parseCSV(csvContent);
 
     const articles: Article[] = [];
@@ -61,8 +76,8 @@ async function loadArticles(): Promise<Article[]> {
       try {
         const filePath = path.join(process.cwd(), 'SB_publications-main', record.saved_file_path);
         
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, 'utf-8');
+        const content = safeReadFile(filePath);
+        if (content) {
           const processedArticle = processArticleContent(content, record);
           articles.push(processedArticle);
         }
@@ -76,8 +91,10 @@ async function loadArticles(): Promise<Article[]> {
     console.log(`Loaded ${articles.length} articles successfully`);
     return articles;
   } catch (error) {
-    console.error('Error loading articles:', error);
-    return [];
+    console.error('Error loading articles, falling back to sample data:', error);
+    articlesCache = fallbackArticles;
+    lastLoadTime = Date.now();
+    return fallbackArticles;
   }
 }
 

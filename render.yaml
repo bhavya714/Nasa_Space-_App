@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: nasa-bioscience-explorer
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_URL
+        fromService:
+          type: web
+          name: nasa-bioscience-explorer
+          property: host
+      - key: DEPLOYMENT_PLATFORM
+        value: render
+      - key: DATA_SOURCE
+        value: filesystem
+      - key: ENABLE_ML_FEATURES
+        value: true
+      - key: ENABLE_3D_VISUALIZATION
+        value: true
+      - key: CACHE_DURATION
+        value: 600000
+    healthCheckPath: /api/stats
+    disk:
+      name: data-disk
+      mountPath: /opt/render/project/src
+      sizeGB: 1

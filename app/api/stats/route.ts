@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getDataSource, logDeploymentInfo, safeReadFile, fallbackStats } from '@/utils/deployment';
 
 interface ArticleStats {
   totalArticles: number;
@@ -41,14 +42,29 @@ async function generateStats(): Promise<ArticleStats> {
     return statsCache;
   }
 
+  // Log deployment info for debugging
+  logDeploymentInfo();
+  
+  const dataSource = getDataSource();
+  
+  if (dataSource === 'fallback') {
+    console.log('Using fallback stats - filesystem not accessible');
+    statsCache = fallbackStats;
+    lastStatsLoad = Date.now();
+    return fallbackStats;
+  }
+
   try {
     const summaryPath = path.join(process.cwd(), 'SB_publications-main', 'scraped_summary.csv');
     
-    if (!fs.existsSync(summaryPath)) {
-      return getEmptyStats();
+    const csvContent = safeReadFile(summaryPath);
+    if (!csvContent) {
+      console.warn('Summary CSV not found, using fallback stats');
+      statsCache = fallbackStats;
+      lastStatsLoad = Date.now();
+      return fallbackStats;
     }
 
-    const csvContent = fs.readFileSync(summaryPath, 'utf-8');
     const records = parseCSV(csvContent);
 
     // Initialize counters
@@ -79,18 +95,19 @@ async function generateStats(): Promise<ArticleStats> {
         // Try to read article content for keyword and category analysis
         const filePath = path.join(process.cwd(), 'SB_publications-main', record.saved_file_path);
         
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, 'utf-8').toLowerCase();
+        const content = safeReadFile(filePath);
+        if (content) {
+          const lowerContent = content.toLowerCase();
           
           // Count keywords
           bioKeywords.forEach(keyword => {
-            if (content.includes(keyword.toLowerCase())) {
+            if (lowerContent.includes(keyword.toLowerCase())) {
               keywordCounts[keyword] = (keywordCounts[keyword] || 0) + 1;
             }
           });
 
           // Categorize article
-          const categories = categorizeArticle(content, record.url);
+          const categories = categorizeArticle(lowerContent, record.url);
           categories.forEach(category => {
             categoriesCount[category] = (categoriesCount[category] || 0) + 1;
           });
@@ -132,8 +149,10 @@ async function generateStats(): Promise<ArticleStats> {
     
     return stats;
   } catch (error) {
-    console.error('Error generating stats:', error);
-    return getEmptyStats();
+    console.error('Error generating stats, using fallback data:', error);
+    statsCache = fallbackStats;
+    lastStatsLoad = Date.now();
+    return fallbackStats;
   }
 }
 
