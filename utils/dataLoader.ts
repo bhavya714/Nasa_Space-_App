@@ -298,7 +298,7 @@ function extractKeywordsFromContent(content: string): string[] {
 
 function categorizeContent(content: string): string[] {
   const lowerContent = content.toLowerCase();
-  const categories = [];
+  const categories: string[] = [];
   
   const categoryMap = {
     'Space Biology': ['space', 'microgravity', 'astronaut', 'spaceflight'],
@@ -333,7 +333,7 @@ function getEmbeddedArticlesFromData(): any[] {
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',');
     const fileName = values[5]?.split('/')[1];
-    const content = embeddedData.articleTexts[fileName] || 'Article content not available';
+    const content = (embeddedData.articleTexts as any)[fileName] || 'Article content not available';
     
     articles.push({
       id: parseInt(values[0]),

@@ -234,7 +234,7 @@ function generateDailyActivity() {
     });
   }
   
-  return trends;
+  return days;
 }
 
 // Generate stats from embedded data

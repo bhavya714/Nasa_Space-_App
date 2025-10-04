@@ -207,7 +207,7 @@ export function getEmbeddedArticlesData() {
     
     // Get article content from embedded texts
     const fileName = record.saved_file_path?.split('/')[1];
-    const content = embeddedData.articleTexts[fileName] || 'Article content not available';
+    const content = (embeddedData.articleTexts as any)[fileName] || 'Article content not available';
     
     articles.push({
       id: parseInt(record.article_id),
@@ -260,7 +260,7 @@ function extractKeywordsFromContent(content: string): string[] {
 
 function categorizeFromContent(content: string): string[] {
   const lowerContent = content.toLowerCase();
-  const categories = [];
+  const categories: string[] = [];
   
   const categoryMap = {
     'Space Biology': ['space', 'microgravity', 'spaceflight'],
